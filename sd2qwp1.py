@@ -97,6 +97,7 @@ def main():
         epilog=""" """)
     parser.add_argument('--exp', type=str, default='', help="""str (eg: 'mfx101080524') - LCLS experiment identifier """)
     parser.add_argument('--run', type=int, help="""int (default=1)- LCLS run number""")
+    parser.add_argument('--out', type=str, default='', help="""str (eg: '/path/to/') - destination for PND and HDF5 files """)
     args=parser.parse_args()
 
     if not args.exp:
@@ -108,12 +109,18 @@ def main():
         print("error: Must provide run number")
         parser.print_help()
         exit(1)
-
+    
     run = args.run
     exp = args.exp
-    #f = '/sdf/data/lcls/ds/mfx/mfx101080524/results/mfx101080524_Run0005.h5'
-    f = '/sdf/data/lcls/ds/{}/{}/hdf5/smalldata/{}_Run{:04}.h5'.format(exp[:3],exp,exp,run)
 
+    if not args.out:
+        output_dir = "/sdf/data/lcls/ds/{}/{}/stats/summary/TJump".format(exp[:3],exp)
+        print("no output directory specified, defaulting to:\n{}".format(output_dir))
+    else:
+        output_dir = args.out
+
+
+    f = '/sdf/data/lcls/ds/{}/{}/hdf5/smalldata/{}_Run{:04}.h5'.format(exp[:3],exp,exp,run)
     h5 = File(f) ### using h5py
     #logfile = open("run{}.logfile".format(run), 'w')
     xray_on = h5['lightStatus']['xray'][:] == 1
@@ -122,7 +129,6 @@ def main():
 
     ### use average wavelength from run as shot-to-shot variation contributes less than z-fluctuations
     eV = np.nanmean(h5['ebeam']['photon_energy'][xray_on][:])
-
     lamb = eV_to_lamba(eV)
     two_theta = h5['Rayonix']['pyfai_q'][xray_on][0] ### two_theta is the same for all events
     q = two_theta_deg_to_q(two_theta, lamb)
@@ -206,7 +212,7 @@ def main():
     ax.set_ylabel("I (AU)")
     for c in filt_scaled_azav:
         ax.plot(q[plot_mask], c[plot_mask])
-    #fig.savefig("run{}_scaled_to_beamMon.png".format(run), dpi=200)
+    fig.savefig("{}/run{}_scattering_falloff_filter_pass.png".format(output_dir,run), dpi=200)
 
 
     ### remove Bragg peak contributions to azav
@@ -224,7 +230,7 @@ def main():
     for c in test:
         ax2.plot(q[plot_mask], c[plot_mask])
 
-    #fig2.savefig("run{}_scaled_smoothed_airsubtracted.png".format(run), dpi=200)
+    fig2.savefig("{}/run{}_Scaled_Smoothed_AirSubtracted.png".format(output_dir,run), dpi=200)
 
 
     ### drop curves that have insignificant solvent contribution (keep "hits" only)
@@ -245,7 +251,7 @@ def main():
     ax3.set_ylabel("I (AU)")
     for c in test_filt:
         ax3.plot(q[plot_mask], c[plot_mask])
-
+    fig3.savefig("{}/run{}_water-to-air_filter_pass.png".format(output_dir,run), dpi=200)
 
     ids_waterq2q1ratio_mask = ids_q3q2_mask[water_filt]
     output['water-to-air_filter_pass'] = output['event_time'].isin(ids_waterq2q1ratio_mask)
@@ -274,6 +280,7 @@ def main():
     ax4.set_ylabel("I (AU)")
     for c in test_doublefilt:
         ax4.plot(q[plot_mask], c[plot_mask])
+    fig4.savefig("{}/run{}_water-peak-2sigma_filter_pass.png".format(output_dir,run), dpi=200)
 
 
     ids_q2_2sigma_mask = ids_waterq2q1ratio_mask[water_peak_filt]
@@ -343,6 +350,7 @@ def main():
     plt.title("Water Peak vs Laser Status")
     plt.violinplot([qLON_arr, qLOFF1_arr, qLOFF2_arr], positions=[0,1,2], showextrema=False, showmeans=True, showmedians=True)
     plt.xticks([0,1,2],["on","off1","off2"])
+    plt.savefig("{}/run{}_water-peak-vs-laser-status.png".format(output_dir,run), dpi=200)
 
     ids_ZofI_5sigma_mask = ids_q2_2sigma_mask[z_filt_for_rescaled]
     output['zscore-I-5sigma_filter_pass'] = output['event_time'].isin(ids_ZofI_5sigma_mask)
@@ -354,7 +362,7 @@ def main():
     output['q-of-water-peak1'] = np.NaN
     output.loc[indices, 'q-of-water-peak1'] = qWP_arr
 
-    output.to_hdf('./{}_Run{}_sd2qwp1.hdf5'.format(exp,run), key='df', mode='w')
+    output.to_hdf('{}/run{}_sd2qwp1.hdf5'.format(output_dir,run), key='df', mode='w')
 
 
 
