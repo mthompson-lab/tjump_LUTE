@@ -1,4 +1,8 @@
+#! /usr/bin/env python3
+
 import numpy as np
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from h5py import File
 from pathlib import Path
@@ -90,37 +94,34 @@ def z_filt(array, z_cutoff):
 
 def main():
 
+    ### I/O related arguments
     import argparse
-
     parser=argparse.ArgumentParser(
         description='''analysis of LCLS smalldata HDF5 files on a per run basis - compute t-jump by fitting water peak''',
         epilog=""" """)
-    parser.add_argument('--exp', type=str, default='', help="""str (eg: 'mfx101080524') - LCLS experiment identifier """)
-    parser.add_argument('--run', type=int, help="""int (default=1)- LCLS run number""")
-    parser.add_argument('--out', type=str, default='', help="""str (eg: '/path/to/') - destination for PND and HDF5 files """)
+    parser.add_argument('--exp', type=str, required=True, help="""str (eg: 'mfx101080524') - LCLS experiment identifier""")
+    parser.add_argument('--run', type=int, required=True, help="""int (default=1)- LCLS run number""")
+    parser.add_argument('--output', type=str, default='', help="""str (eg: '/path/to/') - destination for the folder containing output PND and HDF5 files""")
+    parser.add_argument('--output_h5', type=str, default='', help="""str (eg: 'run0005_sd2qwp1.hdf5') - name of the output h5 file""")
+    parser.add_argument('--input', type=str, default='', help="""str (eg: '/path/to/') - path to input smalldata h5 file""")
+
     args=parser.parse_args()
-
-    if not args.exp:
-        print("error: Must provide experiment identifier")
-        parser.print_help()
-        exit(1)
-
-    if not args.run:
-        print("error: Must provide run number")
-        parser.print_help()
-        exit(1)
-    
     run = args.run
     exp = args.exp
-
-    if not args.out:
+    if not args.output:
         output_dir = "/sdf/data/lcls/ds/{}/{}/stats/summary/TJump".format(exp[:3],exp)
         print("no output directory specified, defaulting to:\n{}".format(output_dir))
     else:
-        output_dir = args.out
+        output_dir = args.output
+    if not args.output_h5:
+        output_h5 = "run{:04d}_sd2qwp1.hdf5".format(run)
+    else:
+        output_h5 = args.output_h5
+    if not args.input:
+        f = '/sdf/data/lcls/ds/{}/{}/hdf5/smalldata/{}_Run{:04}.h5'.format(exp[:3],exp,exp,run)
+    else:
+        f = args.input
 
-
-    f = '/sdf/data/lcls/ds/{}/{}/hdf5/smalldata/{}_Run{:04}.h5'.format(exp[:3],exp,exp,run)
     h5 = File(f) ### using h5py
     #logfile = open("run{}.logfile".format(run), 'w')
     xray_on = h5['lightStatus']['xray'][:] == 1
@@ -132,12 +133,6 @@ def main():
     lamb = eV_to_lamba(eV)
     two_theta = h5['Rayonix']['pyfai_q'][xray_on][0] ### two_theta is the same for all events
     q = two_theta_deg_to_q(two_theta, lamb)
-
-    ### hard-code paths to standard curve files
-    Standard_vecs_x = np.load("/sdf/data/lcls/ds/mfx/mfx101080524/results/wolff/reference_vectors/singular_vectors_matching_q.npy")
-    Standard_vecs_ys_buff = np.load("/sdf/data/lcls/ds/mfx/mfx101080524/results/wolff/reference_vectors/full_array_scaled_vecs.npy")[0:160]
-    Standard_vecs_ys_cell = np.load("/sdf/data/lcls/ds/mfx/mfx101080524/results/wolff/reference_vectors/full_array_scaled_vecs.npy")[160:320]
-
 
     try:
         lens_v = h5['scan']['lens_v'][:]
@@ -212,7 +207,7 @@ def main():
     ax.set_ylabel("I (AU)")
     for c in filt_scaled_azav:
         ax.plot(q[plot_mask], c[plot_mask])
-    fig.savefig("{}/run{}_scattering_falloff_filter_pass.png".format(output_dir,run), dpi=200)
+    fig.savefig("{}/run{:04d}_scattering_falloff_filter_pass.png".format(output_dir,run), dpi=200)
 
 
     ### remove Bragg peak contributions to azav
@@ -230,7 +225,7 @@ def main():
     for c in test:
         ax2.plot(q[plot_mask], c[plot_mask])
 
-    fig2.savefig("{}/run{}_Scaled_Smoothed_AirSubtracted.png".format(output_dir,run), dpi=200)
+    fig2.savefig("{}/run{:04d}_Scaled_Smoothed_AirSubtracted.png".format(output_dir,run), dpi=200)
 
 
     ### drop curves that have insignificant solvent contribution (keep "hits" only)
@@ -251,7 +246,7 @@ def main():
     ax3.set_ylabel("I (AU)")
     for c in test_filt:
         ax3.plot(q[plot_mask], c[plot_mask])
-    fig3.savefig("{}/run{}_water-to-air_filter_pass.png".format(output_dir,run), dpi=200)
+    fig3.savefig("{}/run{:04d}_water-to-air_filter_pass.png".format(output_dir,run), dpi=200)
 
     ids_waterq2q1ratio_mask = ids_q3q2_mask[water_filt]
     output['water-to-air_filter_pass'] = output['event_time'].isin(ids_waterq2q1ratio_mask)
@@ -280,7 +275,7 @@ def main():
     ax4.set_ylabel("I (AU)")
     for c in test_doublefilt:
         ax4.plot(q[plot_mask], c[plot_mask])
-    fig4.savefig("{}/run{}_water-peak-2sigma_filter_pass.png".format(output_dir,run), dpi=200)
+    fig4.savefig("{}/run{:04d}_water-peak-2sigma_filter_pass.png".format(output_dir,run), dpi=200)
 
 
     ids_q2_2sigma_mask = ids_waterq2q1ratio_mask[water_peak_filt]
@@ -292,6 +287,10 @@ def main():
 
 
     ### setup standard curve of peak-position values as a function of temperature (switch axes for linear regression)
+    ### hard-code paths to standard curve files
+    Standard_vecs_x = np.load("/sdf/data/lcls/ds/mfx/mfx101080524/results/wolff/reference_vectors/singular_vectors_matching_q.npy")
+    Standard_vecs_ys_buff = np.load("/sdf/data/lcls/ds/mfx/mfx101080524/results/wolff/reference_vectors/full_array_scaled_vecs.npy")[0:160]
+    # Standard_vecs_ys_cell = np.load("/sdf/data/lcls/ds/mfx/mfx101080524/results/wolff/reference_vectors/full_array_scaled_vecs.npy")[160:320]
     temps = np.arange(280,341,4)
     buff_temp_ys = np.split(Standard_vecs_ys_buff, 16)
     lin_x = []
@@ -350,7 +349,7 @@ def main():
     plt.title("Water Peak vs Laser Status")
     plt.violinplot([qLON_arr, qLOFF1_arr, qLOFF2_arr], positions=[0,1,2], showextrema=False, showmeans=True, showmedians=True)
     plt.xticks([0,1,2],["on","off1","off2"])
-    plt.savefig("{}/run{}_water-peak-vs-laser-status.png".format(output_dir,run), dpi=200)
+    plt.savefig("{}/run{:04d}_water-peak-vs-laser-status.png".format(output_dir,run), dpi=200)
 
     ids_ZofI_5sigma_mask = ids_q2_2sigma_mask[z_filt_for_rescaled]
     output['zscore-I-5sigma_filter_pass'] = output['event_time'].isin(ids_ZofI_5sigma_mask)
@@ -362,14 +361,8 @@ def main():
     output['q-of-water-peak1'] = np.NaN
     output.loc[indices, 'q-of-water-peak1'] = qWP_arr
 
-    output.to_hdf('{}/run{}_sd2qwp1.hdf5'.format(output_dir,run), key='df', mode='w')
-
-
-
-
+    output.to_hdf('{}/{}'.format(output_dir,output_h5), key='df', mode='w')
     return
 
 if __name__ == "__main__":
     main()
-
-
