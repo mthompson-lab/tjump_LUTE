@@ -88,7 +88,8 @@ def two_peak_fit(x_in, y_in, temp=0, plot=False, verbose=False, model_type='gaus
         plt.plot(x, y_corr, label="Corrected")
         plt.plot(x, dy, '--', label="1st Derivative")
         plt.plot(x, d2y, ':', label="2nd Derivative")
-        plt.legend(); plt.title("Derivative Check"); plt.grid(True); plt.show()
+        plt.legend(); plt.title("Derivative Check"); plt.grid(True); # plt.show()
+        plt.savefig("{}/run{:04d}_Derivative_Check.png".format(output_dir,run), dpi=100)
 
     # Choose model type
     if model_type.lower() == 'voigt':
@@ -126,7 +127,7 @@ def two_peak_fit(x_in, y_in, temp=0, plot=False, verbose=False, model_type='gaus
         result.plot_fit()
         plt.grid(True)
         plt.title(f"{model_type.title()} Two-Peak Fit @ Temp {temp}K")
-        plt.show()
+        plt.savefig("{}/run{:04d}_Two-Peak_Fit_Temp_{}K.png".format(output_dir,run,temp), dpi=100)
 
         comps = result.eval_components(x=x)
         plt.plot(x, comps['g1_'], label='Peak 1')
@@ -134,7 +135,7 @@ def two_peak_fit(x_in, y_in, temp=0, plot=False, verbose=False, model_type='gaus
         plt.legend()
         plt.grid(True)
         plt.title("Individual Peak Components")
-        plt.show()
+        plt.savefig("{}/run{:04d}_Individual_Peak_Components.png".format(output_dir,run), dpi=100)
 
     # Extract peak positions and compute delta
     c1 = result.params['g1_center'].value
