@@ -1,4 +1,8 @@
+#! /usr/bin/env python3
+
 import numpy as np
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from h5py import File
 from pathlib import Path
@@ -84,7 +88,8 @@ def two_peak_fit(x_in, y_in, temp=0, plot=False, verbose=False, model_type='gaus
         plt.plot(x, y_corr, label="Corrected")
         plt.plot(x, dy, '--', label="1st Derivative")
         plt.plot(x, d2y, ':', label="2nd Derivative")
-        plt.legend(); plt.title("Derivative Check"); plt.grid(True); plt.show()
+        plt.legend(); plt.title("Derivative Check"); plt.grid(True); # plt.show()
+        plt.savefig("{}/run{:04d}_Derivative_Check.png".format(output_dir,run), dpi=100)
 
     # Choose model type
     if model_type.lower() == 'voigt':
@@ -122,7 +127,7 @@ def two_peak_fit(x_in, y_in, temp=0, plot=False, verbose=False, model_type='gaus
         result.plot_fit()
         plt.grid(True)
         plt.title(f"{model_type.title()} Two-Peak Fit @ Temp {temp}K")
-        plt.show()
+        plt.savefig("{}/run{:04d}_Two-Peak_Fit_Temp_{}K.png".format(output_dir,run,temp), dpi=100)
 
         comps = result.eval_components(x=x)
         plt.plot(x, comps['g1_'], label='Peak 1')
@@ -130,7 +135,7 @@ def two_peak_fit(x_in, y_in, temp=0, plot=False, verbose=False, model_type='gaus
         plt.legend()
         plt.grid(True)
         plt.title("Individual Peak Components")
-        plt.show()
+        plt.savefig("{}/run{:04d}_Individual_Peak_Components.png".format(output_dir,run), dpi=100)
 
     # Extract peak positions and compute delta
     c1 = result.params['g1_center'].value
@@ -215,46 +220,74 @@ def spline_peak_fit(x_in, y_in):
 
 def fit_peak(q, curve, temp=0, plot=False, verbose=False, model_type='gaussian', show_derivatives=False, method="two_peak_fit"):
     if method == "two_peak_fit":
-        return two_peak_fit(q, curve, temp=temp, plot=plot, verbose=verbost, model_type=model_type, show_derivatives=show_derivatives)
+        return two_peak_fit(q, curve, temp=temp, plot=plot, verbose=verbose, model_type=model_type, show_derivatives=show_derivatives)
     elif method == "simple":
         return simple_peak_fit(q, curve, temp)
     elif method == "spline":
         return spline_peak_fit(q, curve)
     else:
         raise ValueError(f"Unknown peak fitting method: {method}")
+    
 def main():
 
+    ### I/O related arguments
     import argparse
-
     parser=argparse.ArgumentParser(
         description='''analysis of LCLS smalldata HDF5 files on a per run basis - compute t-jump by fitting water peak''',
         epilog=""" """)
-    parser.add_argument('--exp', type=str, default='', help="""str (eg: 'mfx101080524') - LCLS experiment identifier """)
-    parser.add_argument('--run', type=int, help="""int (default=1)- LCLS run number""")
-    parser.add_argument('--out', type=str, default='', help="""str (eg: '/path/to/') - destination for PND and HDF5 files """)
-    parser.add_argument('--peakfit', type=str, default='simple', help="""Peak fitting method: 'simple' or 'spline' (default=simple)""")\n        print("error: Must provide experiment identifier")
-    args=parser.parse_args()
-    peakfit_method = args.peakfit
-    if not args.exp:
-        parser.print_help()
-        exit(1)
-
-    if not args.run:
-        print("error: Must provide run number")
-        parser.print_help()
-        exit(1)
+    parser.add_argument('--exp', 
+                        type=str, 
+                        required=True, 
+                        help="str (eg: 'mfx101080524') - LCLS experiment identifier")
     
+    parser.add_argument('--run', 
+                        type=int, 
+                        required=True, 
+                        help="int (eg: 146) - LCLS run number")
+    
+    parser.add_argument('--output', 
+                        type=str, 
+                        default='', 
+                        help="str (eg: '/path/to/') - destination for the folder containing output PNG and HDF5 files, "
+                             "default is /sdf/data/lcls/ds/{exp[:3]}/{exp}/stats/summary/TJump")
+    
+    parser.add_argument('--output_h5', 
+                        type=str, 
+                        default='', 
+                        help="str (eg: 'run0005_sd2qwp1.hdf5') - name of the output h5 file, "
+                             "default is run{:04d}_smalldata_to_Tval_multimethod.hdf5")
+    
+    parser.add_argument('--input', 
+                        type=str, 
+                        default='', 
+                        help="str (eg: '/path/to/') - path to input smalldata h5 file, "
+                             "default is /sdf/data/lcls/ds/{exp[:3]}/{exp}/hdf5/smalldata/{exp}_Run{:04}.h5")
+    
+    parser.add_argument('--peakfit', 
+                        type=str, 
+                        default='simple', 
+                        help="Peak fitting method: 'simple' or 'spline' or 'two_peak_fit' (default=simple)")
+    
+    args=parser.parse_args()
     run = args.run
     exp = args.exp
-
-    if not args.out:
+    if not args.output:
         output_dir = "/sdf/data/lcls/ds/{}/{}/stats/summary/TJump".format(exp[:3],exp)
         print("no output directory specified, defaulting to:\n{}".format(output_dir))
     else:
-        output_dir = args.out
+        output_dir = args.output
+    if not args.output_h5:
+        output_h5 = "run{:04d}_sd2qwp1.hdf5".format(run)
+    else:
+        output_h5 = args.output_h5
+    if not args.input:
+        f = '/sdf/data/lcls/ds/{}/{}/hdf5/smalldata/{}_Run{:04}.h5'.format(exp[:3],exp,exp,run)
+    else:
+        f = args.input
+    if args.peakfit not in ['simple', 'spline', 'two_peak_fit']:
+        raise ValueError(f"Peak fitting method must be in ['simple', 'spline', 'two_peak_fit'], got {args.peakfit}")
+    peakfit_method = args.peakfit
 
-
-    f = '/sdf/data/lcls/ds/{}/{}/hdf5/smalldata/{}_Run{:04}.h5'.format(exp[:3],exp,exp,run)
     h5 = File(f) ### using h5py
     #logfile = open("run{}.logfile".format(run), 'w')
     xray_on = h5['lightStatus']['xray'][:] == 1
@@ -266,12 +299,6 @@ def main():
     lamb = eV_to_lamba(eV)
     two_theta = h5['Rayonix']['pyfai_q'][xray_on][0] ### two_theta is the same for all events
     q = two_theta_deg_to_q(two_theta, lamb)
-
-    ### hard-code paths to standard curve files
-    Standard_vecs_x = np.load("/sdf/data/lcls/ds/mfx/mfx101080524/results/wolff/reference_vectors/singular_vectors_matching_q.npy")
-    Standard_vecs_ys_buff = np.load("/sdf/data/lcls/ds/mfx/mfx101080524/results/wolff/reference_vectors/full_array_scaled_vecs.npy")[0:160]
-    Standard_vecs_ys_cell = np.load("/sdf/data/lcls/ds/mfx/mfx101080524/results/wolff/reference_vectors/full_array_scaled_vecs.npy")[160:320]
-
 
     try:
         lens_v = h5['scan']['lens_v'][:]
@@ -346,7 +373,7 @@ def main():
     ax.set_ylabel("I (AU)")
     for c in filt_scaled_azav:
         ax.plot(q[plot_mask], c[plot_mask])
-    fig.savefig("{}/run{}_scattering_falloff_filter_pass.png".format(output_dir,run), dpi=200)
+    fig.savefig("{}/run{:04d}_scattering_falloff_filter_pass.png".format(output_dir,run), dpi=200)
 
 
     ### remove Bragg peak contributions to azav
@@ -364,7 +391,7 @@ def main():
     for c in test:
         ax2.plot(q[plot_mask], c[plot_mask])
 
-    fig2.savefig("{}/run{}_Scaled_Smoothed_AirSubtracted.png".format(output_dir,run), dpi=200)
+    fig2.savefig("{}/run{:04d}_Scaled_Smoothed_AirSubtracted.png".format(output_dir,run), dpi=200)
 
 
     ### drop curves that have insignificant solvent contribution (keep "hits" only)
@@ -385,7 +412,7 @@ def main():
     ax3.set_ylabel("I (AU)")
     for c in test_filt:
         ax3.plot(q[plot_mask], c[plot_mask])
-    fig3.savefig("{}/run{}_water-to-air_filter_pass.png".format(output_dir,run), dpi=200)
+    fig3.savefig("{}/run{:04d}_water-to-air_filter_pass.png".format(output_dir,run), dpi=200)
 
     ids_waterq2q1ratio_mask = ids_q3q2_mask[water_filt]
     output['water-to-air_filter_pass'] = output['event_time'].isin(ids_waterq2q1ratio_mask)
@@ -414,7 +441,7 @@ def main():
     ax4.set_ylabel("I (AU)")
     for c in test_doublefilt:
         ax4.plot(q[plot_mask], c[plot_mask])
-    fig4.savefig("{}/run{}_water-peak-2sigma_filter_pass.png".format(output_dir,run), dpi=200)
+    fig4.savefig("{}/run{:04d}_water-peak-2sigma_filter_pass.png".format(output_dir,run), dpi=200)
 
 
     ids_q2_2sigma_mask = ids_waterq2q1ratio_mask[water_peak_filt]
@@ -426,6 +453,10 @@ def main():
 
 
     ### setup standard curve of peak-position values as a function of temperature (switch axes for linear regression)
+    ### hard-code paths to standard curve files
+    Standard_vecs_x = np.load("/sdf/data/lcls/ds/mfx/mfx101080524/results/wolff/reference_vectors/singular_vectors_matching_q.npy")
+    Standard_vecs_ys_buff = np.load("/sdf/data/lcls/ds/mfx/mfx101080524/results/wolff/reference_vectors/full_array_scaled_vecs.npy")[0:160]
+    # Standard_vecs_ys_cell = np.load("/sdf/data/lcls/ds/mfx/mfx101080524/results/wolff/reference_vectors/full_array_scaled_vecs.npy")[160:320]
     temps = np.arange(280,341,4)
     buff_temp_ys = np.split(Standard_vecs_ys_buff, 16)
     lin_x = []
@@ -437,15 +468,43 @@ def main():
             lin_y.append(temp)
             lin_x.append(val)
     #tempfinder = linregress(lin_x,lin_y)
-    p0 = [1, 0.5, 0, 280]
-    # Perform the curve fit
-    params, covariance = curve_fit(exponential_decay, lin_x,lin_y, p0=p0)
-
-    # Extract the fitted parameters
-    A_fit, k_fit, C_fit, D_fit = params
-    # Generate the fitted curve
-    x_fit = np.linspace(min(lin_x), max(lin_x), len(lin_y))
-    y_fit = exponential_decay(x_fit, A_fit, k_fit, C_fit, D_fit)
+    # p0 = [1, 0.5, 0, 280]
+    A_init = max(lin_y) - min(lin_y)
+    k_init = 1
+    C_init = min(lin_y) 
+    D_init = min(lin_x)
+    p0 = [A_init, k_init, C_init, D_init]
+    # Probably worth defining sensible bounds for the fit, and let exponential fit fail and fall back to linear 
+    # regression when out of bounds
+    fit_method = "exponential"
+    try:
+        # Perform the curve fit
+        params, covariance = curve_fit(exponential_decay, lin_x, lin_y, p0=p0)
+        # Check if the fit was successful
+        if not np.all(np.isfinite(covariance)):
+            raise RuntimeError("Covariance matrix contains non-finite values")
+        # Extract the fitted parameters
+        A_fit, k_fit, C_fit, D_fit = params
+        # Generate the fitted curve
+        x_fit = np.linspace(min(lin_x), max(lin_x), len(lin_y))
+        y_fit = exponential_decay(x_fit, A_fit, k_fit, C_fit, D_fit)
+        print(f"Exponential fit parameters: A={A_fit:.2f}, k={k_fit:.2f}, C={C_fit:.2f}, D={D_fit:.2f}")
+    except RuntimeError as e:
+        # also covers RuntimeError: Optimal parameters not found: Number of calls to function has reached maxfev = 1000.
+        print(f"Exponential fit failed: {e}")
+        print("Falling back to linear regression")
+        fit_method = "linear"
+        # Linear regression as fallback
+        from scipy.stats import linregress
+        tempfinder = linregress(lin_x, lin_y)
+        slope, intercept, r_value, p_value, std_err = tempfinder
+        x_fit = np.linspace(min(lin_x), max(lin_x), len(lin_y))
+        y_fit = slope * x_fit + intercept
+        print(f"Linear regression: slope={slope:.4f}, intercept={intercept:.2f}, r={r_value:.4f}")
+    ss_tot = np.sum((lin_y - np.mean(lin_y))**2)
+    ss_res = np.sum((lin_y - y_fit)**2)
+    r_squared = 1 - (ss_res / ss_tot)
+    print("R^2 ={}".format(r_squared))
 
     ### rescale data for varying water peak heights
     rescaled = rescale(q, test_doublefilt, method='integration')
@@ -478,29 +537,24 @@ def main():
     qLOFF1_arr = np.array([fit_peak(q, curve, method=peakfit_method) for curve in rescaled_filt[laser_off1_filt]])
     qLON_arr = np.array([fit_peak(q, curve, method=peakfit_method) for curve in rescaled_filt[laser_on_filt]])
 
+
     plt.figure(figsize=(12,6),dpi=200)
+    ylims = [min(lin_x)-0.01, max(lin_x)+0.01]
     plt.subplot(1,2,1)
-    plt.title("Water Peak vs Temperature Fit")
+    plt.title("Water Peak ({}) vs Temperature Fit ({})".format(peakfit_method, fit_method))
     plt.xlabel("Temperature (K)")
     plt.ylabel("Water Peak Q (1/Å)")
-    plt.scatter(lin_x,lin_y, label='Original Data')
-    plt.plot(x_fit, y_fit, color='red', label='Fitted Curve')
-    plt.xlabel('X-axis')
-    plt.ylabel('Y-axis')
-    plt.title('Exponential Fit')
+    plt.scatter(lin_y,lin_x, label='Original Data') # reverse axes due to fitting vs plotting
+    plt.plot(y_fit, x_fit, color='red', label='R^2={}'.format(r_squared))
     plt.legend()
     plt.grid(True)
-    plt.show()
-
-    print(f"Fitted parameters: A={A_fit:.2f}, k={k_fit:.2f}, C={C_fit:.2f}, D={D_fit:.2f}")
-    ss_tot = np.sum((lin_y - np.mean(lin_y))**2)
-    ss_res = np.sum((lin_y - y_fit)**2)
-    r_squared = 1 - (ss_res / ss_tot)
-    print("R^2 ={}".format(r_squared))
-    plt.title("Water Peak vs Laser Status")
+    plt.ylim(ylims)
+    plt.subplot(1,2,2)
+    plt.title("Water Peak ({}) vs Laser Status".format(peakfit_method))
     plt.violinplot([qLON_arr, qLOFF1_arr, qLOFF2_arr], positions=[0,1,2], showextrema=False, showmeans=True, showmedians=True)
     plt.xticks([0,1,2],["on","off1","off2"])
-    plt.savefig("{}/run{}_water-peak-vs-laser-status.png".format(output_dir,run), dpi=200)
+    plt.ylim(ylims)
+    plt.savefig("{}/run{:04d}_water-peak-vs-laser-status.png".format(output_dir,run), dpi=200)
 
     ids_ZofI_5sigma_mask = ids_q2_2sigma_mask[z_filt_for_rescaled]
     output['zscore-I-5sigma_filter_pass'] = output['event_time'].isin(ids_ZofI_5sigma_mask)
@@ -512,14 +566,8 @@ def main():
     output['q-of-water-peak1'] = np.NaN
     output.loc[indices, 'q-of-water-peak1'] = qWP_arr
 
-    output.to_hdf('{}/run{}_sd2qwp1.hdf5'.format(output_dir,run), key='df', mode='w')
-
-
-
-
+    output.to_hdf('{}/{}'.format(output_dir,output_h5), key='df', mode='w')
     return
 
 if __name__ == "__main__":
     main()
-
-

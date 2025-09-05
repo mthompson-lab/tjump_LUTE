@@ -104,6 +104,8 @@ def main():
     parser.add_argument('--output', type=str, default='', help="""str (eg: '/path/to/') - destination for the folder containing output PND and HDF5 files""")
     parser.add_argument('--output_h5', type=str, default='', help="""str (eg: 'run0005_sd2qwp1.hdf5') - name of the output h5 file""")
     parser.add_argument('--input', type=str, default='', help="""str (eg: '/path/to/') - path to input smalldata h5 file""")
+    parser.add_argument('--peakfit', type=str, default='', 
+                        help="""Dummy argument for compatibility with smalldata_to_Tval_multimethod.py. Not used in this script.""")
 
     args=parser.parse_args()
     run = args.run
