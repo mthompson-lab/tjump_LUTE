@@ -557,6 +557,35 @@ def main():
     plt.savefig("{}/run{:04d}_water-peak-vs-laser-status.png".format(output_dir,run), dpi=200)
 
     ids_ZofI_5sigma_mask = ids_q2_2sigma_mask[z_filt_for_rescaled]
+
+
+    ### setup scans
+    try:
+        lens_v_filt = lens_v[xray_on][beam_scale_factor_mask][junk_filt][water_filt][water_peak_filt][z_filt_for_rescaled]
+        plt.scatter(lens_v_filt[laser_off2_filt],qWP_arr[laser_off2_filt], label='Laser Off2',alpha=0.5)
+        plt.scatter(lens_v_filt[laser_off1_filt]+0.01,qWP_arr[laser_off1_filt], label='Laser Off1',alpha=0.5)
+        plt.scatter(lens_v_filt[laser_on_filt]+0.02,qWP_arr[laser_on_filt], label='Laser On',alpha=0.5)
+        plt.legend()
+        plt.xlabel('lens_h')
+        plt.ylabel('water peak q1 (1/ang)')
+        plt.title('Run {} lens_v scan'.format(run))
+        plt.savefig("{}/run{:04d}_lens-v-scan.png".format(output_dir,run), dpi=200)
+    except:
+        pass
+    try:
+        lens_h_filt = lens_h[xray_on][beam_scale_factor_mask][junk_filt][water_filt][water_peak_filt][z_filt_for_rescaled]
+        plt.scatter(lens_h_filt[laser_off2_filt],qWP_arr[laser_off2_filt], label='Laser Off2',alpha=0.5)
+        plt.scatter(lens_h_filt[laser_off1_filt]+0.01,qWP_arr[laser_off1_filt], label='Laser Off1',alpha=0.5)
+        plt.scatter(lens_h_filt[laser_on_filt]+0.02,qWP_arr[laser_on_filt], label='Laser On',alpha=0.5)
+        plt.legend()
+        plt.xlabel('lens_h')
+        plt.ylabel('water peak q1 (1/ang)')
+        plt.title('Run {} lens_h scan'.format(run))
+        plt.savefig("{}/run{:04d}_lens-h-scan.png".format(output_dir,run), dpi=200)
+    except:
+        pass
+
+
     output['zscore-I-5sigma_filter_pass'] = output['event_time'].isin(ids_ZofI_5sigma_mask)
     output['laser_on'] = h5['evr']['code_203'][:] == 1
     output['laser_off1'] = h5['evr']['code_204'][:] == 1
