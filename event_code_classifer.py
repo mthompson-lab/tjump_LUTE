@@ -50,6 +50,7 @@ def load_h5_file(h5_file, event_codes):
     """
     import h5py as h5
     f = h5.File(h5_file)
+    xray_on = f['lightStatus']['xray'][:] == 1
 
     # Determine psana version for h5 keys
     if 'jungfrau' in f.keys():
@@ -64,28 +65,29 @@ def load_h5_file(h5_file, event_codes):
         print(f"Detector jungfrau not found in h5 key. Assuming psana version 1, with detector {detname} and azimuthal integration method {azint_method}.")
 
     # Load azimuthal integration data
-    azav = f[detname][f'{azint_method}_azav']
+    azav = f[detname][f'{azint_method}_azav'][xray_on]
     if len(azav.shape) == 3:
         azav = np.average(azav, axis=1) #2d azimuthal average
     elif len(azav.shape) == 2:
         pass
     else:
         raise ValueError(f"azav shape error: {azav.shape}")
-    q = f[detname][f'{azint_method}_q']
+    q = f[detname][f'{azint_method}_q'][xray_on]
     x = np.concatenate((azav, q), axis=-1) # shape (num_events, num_q * 2)
     
     # Load event code labels
     labels = []
-    label_names = ["Event Code {c}" for c in event_codes]
+    label_names = [f"Event Code {c}" for c in event_codes]
+    print(f"label_names: {label_names}")
     if psana_version == 1:
         for c in event_codes:
             labels.append(
-                f['evr'][f'code_{c}'][:] == 1
+                f['evr'][f'code_{c}'][:][xray_on] == 1
             )
     else:
         for c in event_codes:
             labels.append(
-                f['timing']['eventcodes'][:][:, c] == 1
+                f['timing']['eventcodes'][:][xray_on][:, c] == 1
             )
     labels = np.column_stack(labels) # one-hot encoded, shape (num_events, num_event_codes)
     labels = np.argmax(labels, axis=1) # shape (num_events,)
@@ -130,12 +132,12 @@ def get_auc_record(fold_id, data, fold_ids):
     n.fit(*train)
     labels_true = test[1]
     scores = n.predict_proba(test[0])
-    record = {
-        'Multi-Class (One vs One)' : metrics.roc_auc_score(labels_true, scores, multi_class='ovo'),
-        'Multi-Class (One vs Rest)' : metrics.roc_auc_score(labels_true, scores, multi_class='ovr'),
-    }
+    record = {}
     for l in range(scores.shape[-1]):
         record[f'{label_names[l]}'] = metrics.roc_auc_score(labels_true == l, scores[...,l])
+    if scores.shape[-1] == 2: scores = scores[:, 1] # for binary classification, we only need the positive class
+    record['Multi-Class (One vs One)'] = metrics.roc_auc_score(labels_true, scores, multi_class='ovo')
+    record['Multi-Class (One vs Rest)'] = metrics.roc_auc_score(labels_true, scores, multi_class='ovr')
     return record
 
 folds = parser.folds
