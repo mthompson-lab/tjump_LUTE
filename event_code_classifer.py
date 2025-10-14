@@ -168,7 +168,7 @@ plt.xticks(
 )
 plt.ylabel("Area Under Receiver Operating Characteristic")
 plt.grid(which='both', axis='y', ls='--', color='k')
-plt.title(parser.data_file)
+plt.title(parser.data_file, fontsize=8)
 plt.tight_layout()
 print(report)
 stop = time()
