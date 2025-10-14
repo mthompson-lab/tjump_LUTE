@@ -562,6 +562,7 @@ def main():
     ### setup scans
     try:
         lens_v_filt = lens_v[xray_on][beam_scale_factor_mask][junk_filt][water_filt][water_peak_filt][z_filt_for_rescaled]
+        plt.figure(figsize=(12,6),dpi=200)
         plt.scatter(lens_v_filt[laser_off2_filt],qWP_arr[laser_off2_filt], label='Laser Off2',alpha=0.5)
         plt.scatter(lens_v_filt[laser_off1_filt]+0.01,qWP_arr[laser_off1_filt], label='Laser Off1',alpha=0.5)
         plt.scatter(lens_v_filt[laser_on_filt]+0.02,qWP_arr[laser_on_filt], label='Laser On',alpha=0.5)
@@ -574,6 +575,7 @@ def main():
         pass
     try:
         lens_h_filt = lens_h[xray_on][beam_scale_factor_mask][junk_filt][water_filt][water_peak_filt][z_filt_for_rescaled]
+        plt.figure(figsize=(12,6),dpi=200)
         plt.scatter(lens_h_filt[laser_off2_filt],qWP_arr[laser_off2_filt], label='Laser Off2',alpha=0.5)
         plt.scatter(lens_h_filt[laser_off1_filt]+0.01,qWP_arr[laser_off1_filt], label='Laser Off1',alpha=0.5)
         plt.scatter(lens_h_filt[laser_on_filt]+0.02,qWP_arr[laser_on_filt], label='Laser On',alpha=0.5)
