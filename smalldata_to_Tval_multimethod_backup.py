@@ -264,12 +264,6 @@ def main():
                         default='', 
                         help="str (eg: '/path/to/') - path to input smalldata h5 file, "
                              "default is /sdf/data/lcls/ds/{exp[:3]}/{exp}/hdf5/smalldata/{exp}_Run{:04}.h5")
-
-    parser.add_argument('--event_codes', 
-                        nargs='+', 
-                        type=int, 
-                        help="Specify the event codes of interest in h5 file. At least two are required,"
-                            "assumes the first code is laser_on, followed by laser_off1, laser_off2, etc.")
     
     parser.add_argument('--peakfit', 
                         type=str, 
@@ -529,24 +523,21 @@ def main():
 
 
     ### initiate laser filters, sized to match filtered arrays
-    laser_on    = h5['timing']['eventcodes'][:][:, args.event_codes[0]][xray_on][beam_scale_factor_mask][:] == 1
-    laser_off_lists = []
-    for event_code in args.event_codes[1:]:
-        laser_off_lists.append(h5['timing']['eventcodes'][:][:, event_code][xray_on][beam_scale_factor_mask][:] == 1)
+    laser_on    = h5['timing']['eventcodes'][:][:,203][xray_on][beam_scale_factor_mask][:] == 1
+    laser_off1  = h5['timing']['eventcodes'][:][:,207][xray_on][beam_scale_factor_mask][:] == 1
+    laser_off2  = h5['timing']['eventcodes'][:][:,212][xray_on][beam_scale_factor_mask][:] == 1
 
     # laser_on_filt = laser_on[junk_filt][water_filt][water_peak_filt][water_peak_vals>0.0015][z_filt_for_rescaled]
     # laser_off1_filt = laser_off1[junk_filt][water_filt][water_peak_filt][water_peak_vals>0.0015][z_filt_for_rescaled]
     # laser_off2_filt = laser_off2[junk_filt][water_filt][water_peak_filt][water_peak_vals>0.0015][z_filt_for_rescaled]
     laser_on_filt = laser_on[junk_filt][water_filt][water_peak_filt][z_filt_for_rescaled]
-    laser_off_filt_lists = []
-    for laser_off_list in laser_off_lists:
-        laser_off_filt_lists.append(laser_off_list[junk_filt][water_filt][water_peak_filt][z_filt_for_rescaled])
+    laser_off1_filt = laser_off1[junk_filt][water_filt][water_peak_filt][z_filt_for_rescaled]
+    laser_off2_filt = laser_off2[junk_filt][water_filt][water_peak_filt][z_filt_for_rescaled]
 
     qWP_arr = np.array([fit_peak(q, curve, method=peakfit_method, output_dir=output_dir, run=run) for curve in rescaled_filt])
-    qLOFF_arr_lists = []
-    for laser_off_filt_list in laser_off_filt_lists:
-        qLOFF_arr_lists.append(np.array([fit_peak(q, curve, method=peakfit_method, output_dir=output_dir, run=run) for curve in rescaled_filt[laser_off_filt_list]]))
 
+    qLOFF2_arr = np.array([fit_peak(q, curve, method=peakfit_method, output_dir=output_dir, run=run) for curve in rescaled_filt[laser_off2_filt]])
+    qLOFF1_arr = np.array([fit_peak(q, curve, method=peakfit_method, output_dir=output_dir, run=run) for curve in rescaled_filt[laser_off1_filt]])
     qLON_arr = np.array([fit_peak(q, curve, method=peakfit_method, output_dir=output_dir, run=run) for curve in rescaled_filt[laser_on_filt]])
 
 
@@ -563,8 +554,8 @@ def main():
     plt.ylim(ylims)
     plt.subplot(1,2,2)
     plt.title("Water Peak ({}) vs Laser Status".format(peakfit_method))
-    plt.violinplot([qLON_arr] + qLOFF_arr_lists, positions=[0] + [i+1 for i in range(len(qLOFF_arr_lists))], showextrema=False, showmeans=True, showmedians=True)
-    plt.xticks([0] + [i+1 for i in range(len(qLOFF_arr_lists))],["on"] + [f"off{i+1}" for i in range(len(qLOFF_arr_lists))])
+    plt.violinplot([qLON_arr, qLOFF1_arr, qLOFF2_arr], positions=[0,1,2], showextrema=False, showmeans=True, showmedians=True)
+    plt.xticks([0,1,2],["on","off1","off2"])
     plt.ylim(ylims)
     plt.savefig("{}/run{:04d}_water-peak-vs-laser-status.png".format(output_dir,run), dpi=200)
 
@@ -575,8 +566,8 @@ def main():
     try:
         lens_v_filt = lens_v[xray_on][beam_scale_factor_mask][junk_filt][water_filt][water_peak_filt][z_filt_for_rescaled]
         plt.figure(figsize=(6,6),dpi=200)
-        for i, laser_off_filt_list in enumerate(laser_off_filt_lists):
-            plt.scatter(lens_v_filt[laser_off_filt_list],qWP_arr[laser_off_filt_list], label=f'Laser Off{i+1}',alpha=0.5)
+        plt.scatter(lens_v_filt[laser_off2_filt],qWP_arr[laser_off2_filt], label='Laser Off2',alpha=0.5)
+        plt.scatter(lens_v_filt[laser_off1_filt]+0.01,qWP_arr[laser_off1_filt], label='Laser Off1',alpha=0.5)
         plt.scatter(lens_v_filt[laser_on_filt]+0.02,qWP_arr[laser_on_filt], label='Laser On',alpha=0.5)
         plt.legend()
         plt.xlabel('lens_h')
@@ -588,8 +579,8 @@ def main():
     try:
         lens_h_filt = lens_h[xray_on][beam_scale_factor_mask][junk_filt][water_filt][water_peak_filt][z_filt_for_rescaled]
         plt.figure(figsize=(6,6),dpi=200)
-        for i, laser_off_filt_list in enumerate(laser_off_filt_lists):
-            plt.scatter(lens_h_filt[laser_off_filt_list],qWP_arr[laser_off_filt_list], label=f'Laser Off{i+1}',alpha=0.5)
+        plt.scatter(lens_h_filt[laser_off2_filt],qWP_arr[laser_off2_filt], label='Laser Off2',alpha=0.5)
+        plt.scatter(lens_h_filt[laser_off1_filt]+0.01,qWP_arr[laser_off1_filt], label='Laser Off1',alpha=0.5)
         plt.scatter(lens_h_filt[laser_on_filt]+0.02,qWP_arr[laser_on_filt], label='Laser On',alpha=0.5)
         plt.legend()
         plt.xlabel('lens_h')
@@ -601,9 +592,9 @@ def main():
 
 
     output['zscore-I-5sigma_filter_pass'] = output['timestamp'].isin(ids_ZofI_5sigma_mask)
-    output['laser_on']   = h5['timing']['eventcodes'][:][:, args.event_codes[0]][:] == 1
-    for i, event_code in enumerate(args.event_codes[1:]):
-        output[f'laser_off{i+1}'] = h5['timing']['eventcodes'][:][:, event_code][:] == 1
+    output['laser_on']   = h5['timing']['eventcodes'][:][:,203][:] == 1
+    output['laser_off1'] = h5['timing']['eventcodes'][:][:,207][:] == 1
+    output['laser_off2'] = h5['timing']['eventcodes'][:][:,212][:] == 1
 
     indices = output.loc[output['timestamp'].isin(ids_ZofI_5sigma_mask)].index
     output['q-of-water-peak1'] = np.NaN
