@@ -57,7 +57,7 @@ def baseline_als(y, lam=1e6, p=0.01, niter=10):
         w = p * (y > z) + (1 - p) * (y < z)
     return z
 
-def two_peak_fit(x_in, y_in, temp=0, plot=False, verbose=False, model_type='gaussian', show_derivatives=False):
+def two_peak_fit(x_in, y_in, temp=0, plot=False, verbose=False, model_type='gaussian', show_derivatives=False, output_dir=None, run=None):
     """
     Fit two peaks to spectrum using Gaussian or Voigt models.
     
@@ -68,6 +68,8 @@ def two_peak_fit(x_in, y_in, temp=0, plot=False, verbose=False, model_type='gaus
         verbose (bool): Print full fit report
         model_type (str): 'gaussian' or 'voigt'
         show_derivatives (bool): Show 1st and 2nd derivatives for diagnostics
+        output_dir (str): Output directory for plots
+        run (int): Run number for naming plots
     
     Returns:
         delta_q (float): Difference between peak centers
@@ -218,9 +220,9 @@ def spline_peak_fit(x_in, y_in):
     idx = np.argmax(smoothed)
     return x_in[fit_mask][idx]
 
-def fit_peak(q, curve, temp=0, plot=False, verbose=False, model_type='gaussian', show_derivatives=False, method="two_peak_fit"):
+def fit_peak(q, curve, temp=0, plot=False, verbose=False, model_type='gaussian', show_derivatives=False, method="two_peak_fit", output_dir=None, run=None):
     if method == "two_peak_fit":
-        return two_peak_fit(q, curve, temp=temp, plot=plot, verbose=verbose, model_type=model_type, show_derivatives=show_derivatives)
+        return two_peak_fit(q, curve, temp=temp, plot=plot, verbose=verbose, model_type=model_type, show_derivatives=show_derivatives, output_dir=output_dir, run=run)
     elif method == "simple":
         return simple_peak_fit(q, curve, temp)
     elif method == "spline":
@@ -249,7 +251,7 @@ def main():
                         type=str, 
                         default='', 
                         help="str (eg: '/path/to/') - destination for the folder containing output PNG and HDF5 files, "
-                             "default is /sdf/data/lcls/ds/{exp[:3]}/{exp}/stats/summary/TJump")
+                             "default is /sdf/data/lcls/ds/{exp[:3]}/{exp}/stats/summary/TJump/{:04}")
     
     parser.add_argument('--output_h5', 
                         type=str, 
@@ -272,7 +274,7 @@ def main():
     run = args.run
     exp = args.exp
     if not args.output:
-        output_dir = "/sdf/data/lcls/ds/{}/{}/stats/summary/TJump".format(exp[:3],exp)
+        output_dir = "/sdf/data/lcls/ds/{}/{}/stats/summary/TJump/{:04}".format(exp[:3],exp,run)
         print("no output directory specified, defaulting to:\n{}".format(output_dir))
     else:
         output_dir = args.output
@@ -297,7 +299,7 @@ def main():
     ### use average wavelength from run as shot-to-shot variation contributes less than z-fluctuations
     eV = np.nanmean(h5['ebeamh']['ebeamPhotonEnergy'][xray_on][:])
     lamb = eV_to_lamba(eV)
-    q = h5['jungfrau']['azav_q']
+    q = h5['jungfrau']['azav_q'][:][0]
     #two_theta = h5['jungfrau']['pyfai_q'][xray_on][0] ### two_theta is the same for all events
     #q = two_theta_deg_to_q(two_theta, lamb)
 
@@ -357,10 +359,10 @@ def main():
 
 
     output = pd.DataFrame()
-    output['event_time'] = h5['event_time']
+    output['timestamp'] = h5['timestamp']
     output['xray_on'] = h5['lightStatus']['xray'][:]
-    output['beam_scale_factor_2sigma_filter_pass'] = output['event_time'].isin(ids_beam_scale_factor_mask)
-    output['scattering_falloff_filter_pass'] = output['event_time'].isin(ids_q3q2_mask)
+    output['beam_scale_factor_2sigma_filter_pass'] = output['timestamp'].isin(ids_beam_scale_factor_mask)
+    output['scattering_falloff_filter_pass'] = output['timestamp'].isin(ids_q3q2_mask)
 
     ### define q_filter for plotting
     plot_mask = np.array(q, dtype=bool)
@@ -416,7 +418,7 @@ def main():
     fig3.savefig("{}/run{:04d}_water-to-air_filter_pass.png".format(output_dir,run), dpi=200)
 
     ids_waterq2q1ratio_mask = ids_q3q2_mask[water_filt]
-    output['water-to-air_filter_pass'] = output['event_time'].isin(ids_waterq2q1ratio_mask)
+    output['water-to-air_filter_pass'] = output['timestamp'].isin(ids_waterq2q1ratio_mask)
 
 
     count_reject_airwater_ratio = water_filt[water_filt == False].shape[0]
@@ -446,7 +448,7 @@ def main():
 
 
     ids_q2_2sigma_mask = ids_waterq2q1ratio_mask[water_peak_filt]
-    output['water-peak-2sigma_filter_pass'] = output['event_time'].isin(ids_q2_2sigma_mask)
+    output['water-peak-2sigma_filter_pass'] = output['timestamp'].isin(ids_q2_2sigma_mask)
 
 
     count_reject_water_peak_2sigma = water_peak_filt[water_peak_filt == False].shape[0]
@@ -465,7 +467,7 @@ def main():
     for scatter,temp in zip(buff_temp_ys, temps):
         for curve in scatter:
             val = simple_peak_fit(Standard_vecs_x, curve, temp)
-            val = fit_peak(Standard_vecs_x, curve, temp, method=peakfit_method)
+            val = fit_peak(Standard_vecs_x, curve, temp, method=peakfit_method, output_dir=output_dir, run=run)
             lin_y.append(temp)
             lin_x.append(val)
     #tempfinder = linregress(lin_x,lin_y)
@@ -532,11 +534,11 @@ def main():
     laser_off1_filt = laser_off1[junk_filt][water_filt][water_peak_filt][z_filt_for_rescaled]
     laser_off2_filt = laser_off2[junk_filt][water_filt][water_peak_filt][z_filt_for_rescaled]
 
-    qWP_arr = np.array([fit_peak(q, curve, method=peakfit_method) for curve in rescaled_filt])
+    qWP_arr = np.array([fit_peak(q, curve, method=peakfit_method, output_dir=output_dir, run=run) for curve in rescaled_filt])
 
-    qLOFF2_arr = np.array([fit_peak(q, curve, method=peakfit_method) for curve in rescaled_filt[laser_off2_filt]])
-    qLOFF1_arr = np.array([fit_peak(q, curve, method=peakfit_method) for curve in rescaled_filt[laser_off1_filt]])
-    qLON_arr = np.array([fit_peak(q, curve, method=peakfit_method) for curve in rescaled_filt[laser_on_filt]])
+    qLOFF2_arr = np.array([fit_peak(q, curve, method=peakfit_method, output_dir=output_dir, run=run) for curve in rescaled_filt[laser_off2_filt]])
+    qLOFF1_arr = np.array([fit_peak(q, curve, method=peakfit_method, output_dir=output_dir, run=run) for curve in rescaled_filt[laser_off1_filt]])
+    qLON_arr = np.array([fit_peak(q, curve, method=peakfit_method, output_dir=output_dir, run=run) for curve in rescaled_filt[laser_on_filt]])
 
 
     plt.figure(figsize=(12,6),dpi=200)
@@ -589,12 +591,12 @@ def main():
         pass
 
 
-    output['zscore-I-5sigma_filter_pass'] = output['event_time'].isin(ids_ZofI_5sigma_mask)
+    output['zscore-I-5sigma_filter_pass'] = output['timestamp'].isin(ids_ZofI_5sigma_mask)
     output['laser_on']   = h5['timing']['eventcodes'][:][:,203][:] == 1
     output['laser_off1'] = h5['timing']['eventcodes'][:][:,204][:] == 1
     output['laser_off2'] = h5['timing']['eventcodes'][:][:,205][:] == 1
 
-    indices = output.loc[output['event_time'].isin(ids_ZofI_5sigma_mask)].index
+    indices = output.loc[output['timestamp'].isin(ids_ZofI_5sigma_mask)].index
     output['q-of-water-peak1'] = np.NaN
     output.loc[indices, 'q-of-water-peak1'] = qWP_arr
 
