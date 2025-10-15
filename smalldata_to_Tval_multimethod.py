@@ -295,10 +295,11 @@ def main():
     print("{} events with X-rays detected\n".format(count_xray_on))
 
     ### use average wavelength from run as shot-to-shot variation contributes less than z-fluctuations
-    eV = np.nanmean(h5['ebeam']['photon_energy'][xray_on][:])
+    eV = np.nanmean(h5['ebeamh']['ebeamPhotonEnergy'][xray_on][:])
     lamb = eV_to_lamba(eV)
-    two_theta = h5['Rayonix']['pyfai_q'][xray_on][0] ### two_theta is the same for all events
-    q = two_theta_deg_to_q(two_theta, lamb)
+    q = h5['jungfrau']['azav_q']
+    #two_theta = h5['jungfrau']['pyfai_q'][xray_on][0] ### two_theta is the same for all events
+    #q = two_theta_deg_to_q(two_theta, lamb)
 
     try:
         lens_v = h5['scan']['lens_v'][:]
@@ -313,12 +314,12 @@ def main():
 
 
     ### scale using total intensity from beammon and then drop files that don't have appropriate falloff...shutter closed or noisy files etc
-    beam_scale_factor = h5['ipm_dg2']['sum'][xray_on][:]
+    beam_scale_factor = h5['MfxDg2BmMon']['totalIntensityJoules'][xray_on][:]
     beam_scale_factor_mask = np.array(beam_scale_factor, dtype=bool)
     beam_scale_factor_sigma = np.abs(zscore(beam_scale_factor))
     beam_scale_factor_mask[beam_scale_factor_sigma>2.0]=False
 
-    azav_all = h5['Rayonix']['pyfai_azav'][:]
+    azav_all = h5['jungfrau']['azav_azav'][:]
     if len(azav_all.shape) == 3:
         print('2d azimuthal averaging')
         azav_all = np.average(azav_all, axis=1)
@@ -350,7 +351,7 @@ def main():
     print("{} events rejected based on scattering falloff filter\n".format(count_reject_q3q2_ratio))
 
 
-    ids = h5['event_time']
+    ids = h5['timestamp']
     ids_beam_scale_factor_mask = ids[xray_on][beam_scale_factor_mask]
     ids_q3q2_mask = ids_beam_scale_factor_mask[junk_filt]
 
@@ -520,9 +521,9 @@ def main():
 
 
     ### initiate laser filters, sized to match filtered arrays
-    laser_on    = h5['evr']['code_203'][xray_on][beam_scale_factor_mask][:] == 1
-    laser_off1  = h5['evr']['code_204'][xray_on][beam_scale_factor_mask][:] == 1
-    laser_off2  = h5['evr']['code_205'][xray_on][beam_scale_factor_mask][:] == 1
+    laser_on    = h5['timing']['eventcodes'][:][:,203][xray_on][beam_scale_factor_mask][:] == 1
+    laser_off1  = h5['timing']['eventcodes'][:][:,204][xray_on][beam_scale_factor_mask][:] == 1
+    laser_off2  = h5['timing']['eventcodes'][:][:,205][xray_on][beam_scale_factor_mask][:] == 1
 
     # laser_on_filt = laser_on[junk_filt][water_filt][water_peak_filt][water_peak_vals>0.0015][z_filt_for_rescaled]
     # laser_off1_filt = laser_off1[junk_filt][water_filt][water_peak_filt][water_peak_vals>0.0015][z_filt_for_rescaled]
@@ -562,6 +563,7 @@ def main():
     ### setup scans
     try:
         lens_v_filt = lens_v[xray_on][beam_scale_factor_mask][junk_filt][water_filt][water_peak_filt][z_filt_for_rescaled]
+        plt.figure(figsize=(6,6),dpi=200)
         plt.scatter(lens_v_filt[laser_off2_filt],qWP_arr[laser_off2_filt], label='Laser Off2',alpha=0.5)
         plt.scatter(lens_v_filt[laser_off1_filt]+0.01,qWP_arr[laser_off1_filt], label='Laser Off1',alpha=0.5)
         plt.scatter(lens_v_filt[laser_on_filt]+0.02,qWP_arr[laser_on_filt], label='Laser On',alpha=0.5)
@@ -574,6 +576,7 @@ def main():
         pass
     try:
         lens_h_filt = lens_h[xray_on][beam_scale_factor_mask][junk_filt][water_filt][water_peak_filt][z_filt_for_rescaled]
+        plt.figure(figsize=(6,6),dpi=200)
         plt.scatter(lens_h_filt[laser_off2_filt],qWP_arr[laser_off2_filt], label='Laser Off2',alpha=0.5)
         plt.scatter(lens_h_filt[laser_off1_filt]+0.01,qWP_arr[laser_off1_filt], label='Laser Off1',alpha=0.5)
         plt.scatter(lens_h_filt[laser_on_filt]+0.02,qWP_arr[laser_on_filt], label='Laser On',alpha=0.5)
@@ -587,9 +590,9 @@ def main():
 
 
     output['zscore-I-5sigma_filter_pass'] = output['event_time'].isin(ids_ZofI_5sigma_mask)
-    output['laser_on'] = h5['evr']['code_203'][:] == 1
-    output['laser_off1'] = h5['evr']['code_204'][:] == 1
-    output['laser_off2'] = h5['evr']['code_205'][:] == 1
+    output['laser_on']   = h5['timing']['eventcodes'][:][:,203][:] == 1
+    output['laser_off1'] = h5['timing']['eventcodes'][:][:,204][:] == 1
+    output['laser_off2'] = h5['timing']['eventcodes'][:][:,205][:] == 1
 
     indices = output.loc[output['event_time'].isin(ids_ZofI_5sigma_mask)].index
     output['q-of-water-peak1'] = np.NaN
