@@ -2,6 +2,7 @@
 Black box assessment of signals in LCLS data using random forest classifiers to predict event code labels from smalldata azimuthal integration results
 """
 
+from turtle import settiltangle
 from joblib import Parallel,delayed
 from sklearn.ensemble import RandomForestClassifier
 import numpy as np
@@ -146,6 +147,14 @@ num_jobs = parser.num_jobs
 seed = 42
 data,label_names = load_data_file(parser.data_file, event_codes=parser.event_codes)
 
+# check if enough data for crossvalidation
+num_shots = data[0].shape[0]
+num_event_codes = len(label_names)
+if num_shots / num_event_codes < folds:
+    raise ValueError(f"Not enough data for {folds} folds. num shots are {num_shots} and num event codes are {num_event_codes}.")
+else:
+    print(f"{folds} folds for {num_shots} shots and {num_event_codes} event codes.")
+
 l = data[0].shape[0]
 fold_ids = np.random.choice(folds, l)
 
@@ -166,7 +175,7 @@ plt.xticks(
     rotation_mode='anchor',
     rotation=45,
 )
-plt.ylabel("Area Under Receiver Operating Characteristic")
+plt.ylabel("Area Under Receiver Operating Characteristic (folds={})".format(folds))
 plt.grid(which='both', axis='y', ls='--', color='k')
 plt.title(parser.data_file, fontsize=8)
 plt.tight_layout()

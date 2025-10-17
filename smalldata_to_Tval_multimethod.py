@@ -166,7 +166,7 @@ def rescale(q, int_arr, method='integration'):
     refy = int_arr[0]
     scaling_mask = np.array(q, dtype=bool)
     scaling_mask[q<1.0]=False # 1 lower and 1.96 upper puts even at isosbestic point of 1.48, seems to break t-jump signal though
-    scaling_mask[q>3.0]=False
+    scaling_mask[q>3.5]=False
     for y in int_arr:
         yy = y[scaling_mask]
         refyy = refy[scaling_mask]
@@ -310,10 +310,10 @@ def main():
     #q = two_theta_deg_to_q(two_theta, lamb)
 
     try:
-        lens_v = h5['scan']['lens_v'][:]
-        print('lens_v scan')
+        lens_g = h5['scan']['lens_g'][:]
+        print('lens_g scan')
     except:
-        print('not a lens_v scan')
+        print('not a lens_g scan')
     try:
         lens_h = h5['scan']['lens_h'][:]
         print('lens_h scan')
@@ -322,7 +322,8 @@ def main():
 
 
     ### scale using total intensity from beammon and then drop files that don't have appropriate falloff...shutter closed or noisy files etc
-    beam_scale_factor = h5['MfxDg2BmMon']['totalIntensityJoules'][xray_on][:]
+    beam_scale_factor = h5['MfxDg1BmMon']['totalIntensityJoules'][xray_on][:]
+    beam_scale_factor = np.ones_like(beam_scale_factor)
     beam_scale_factor_mask = np.array(beam_scale_factor, dtype=bool)
     beam_scale_factor_sigma = np.abs(zscore(beam_scale_factor))
     beam_scale_factor_mask[beam_scale_factor_sigma>2.0]=False
@@ -350,6 +351,7 @@ def main():
     junk_high_q_index = junk_high_q_diff.argmin()
 
     junk_filt = np.abs(scaled_azav[:,junk_high_q_index]) < np.abs(0.7*scaled_azav[:,junk_low_q_index])
+    junk_filt = np.ones_like(junk_filt)
     junk_filt[0] = False
     filt_scaled_azav = scaled_azav[junk_filt]
 
@@ -373,7 +375,7 @@ def main():
     ### define q_filter for plotting
     plot_mask = np.array(q, dtype=bool)
     plot_mask[q<0.3]=False
-    plot_mask[q>3.2]=False
+    plot_mask[q>4.2]=False
 
     fig, ax = plt.subplots()
     ax.axvline(1.93, 0, 1, color='black')
@@ -410,13 +412,13 @@ def main():
     water_high_q_target = 1.93
     water_high_q_diff = np.absolute(q-water_high_q_target)
     water_high_q_index = water_high_q_diff.argmin()
-    factor = 2.5
+    factor = 1.25 # previously 2.5, for run 46 -64 might have set to 1.5
     water_filt = np.abs(test[:,water_high_q_index]) > np.abs(factor*test[:,water_low_q_index])
     test_filt = test[water_filt]
 
     fig3, ax3 = plt.subplots()
     ax3.axvline(1.93, 0, 1, color='black')
-    ax3.set_title("Scaled, Smoothed, AirSubtracted, HighWater")
+    ax3.set_title(f"Scaled, Smoothed, AirSubtracted, HighWater(factor={factor})")
     ax3.set_xlabel("q (1/Å)")
     ax3.set_ylabel("I (AU)")
     for c in test_filt:
@@ -530,10 +532,18 @@ def main():
 
     ### initiate laser filters, sized to match filtered arrays
     laser_on    = h5['timing']['eventcodes'][:][:, args.event_codes[0]][xray_on][beam_scale_factor_mask][:] == 1
+    print(f"Getting laser on event code {args.event_codes[0]}...")
     laser_off_lists = []
     for event_code in args.event_codes[1:]:
+        print(f"Getting laser off event code {event_code}...")
         laser_off_lists.append(h5['timing']['eventcodes'][:][:, event_code][xray_on][beam_scale_factor_mask][:] == 1)
 
+    #plt.figure(figsize=(6,6),dpi=200)
+    #for event_code in args.event_codes:
+    #    code_filt = h5['timing']['eventcodes'][:][:, event_code][xray_on][beam_scale_factor_mask][:] == 1
+    #    plt.plot(np.mean(scaled_azav[code_filt]), label=str(event_code))
+    #plt.legend()
+    #plt.savefig("{}/run{:04d}_avg-curve-by-laser-code.png".format(output_dir,run), dpi=200)
     # laser_on_filt = laser_on[junk_filt][water_filt][water_peak_filt][water_peak_vals>0.0015][z_filt_for_rescaled]
     # laser_off1_filt = laser_off1[junk_filt][water_filt][water_peak_filt][water_peak_vals>0.0015][z_filt_for_rescaled]
     # laser_off2_filt = laser_off2[junk_filt][water_filt][water_peak_filt][water_peak_vals>0.0015][z_filt_for_rescaled]
@@ -544,13 +554,30 @@ def main():
 
     qWP_arr = np.array([fit_peak(q, curve, method=peakfit_method, output_dir=output_dir, run=run) for curve in rescaled_filt])
     qLOFF_arr_lists = []
-    for laser_off_filt_list in laser_off_filt_lists:
-        qLOFF_arr_lists.append(np.array([fit_peak(q, curve, method=peakfit_method, output_dir=output_dir, run=run) for curve in rescaled_filt[laser_off_filt_list]]))
+    for i, laser_off_filt_list in enumerate(laser_off_filt_lists):
+        tmp_arr = np.array([fit_peak(q, curve, method=peakfit_method, output_dir=output_dir, run=run) for curve in rescaled_filt[laser_off_filt_list]])
+        print(
+            f"Event code {args.event_codes[i+1]} water peak statistics:\n"
+            f"  Mean   : {tmp_arr.mean():.5f}\n"
+            f"  Median : {np.median(tmp_arr):.5f}\n"
+            f"  Min    : {tmp_arr.min():.5f}\n"
+            f"  Max    : {tmp_arr.max():.5f}\n"
+            f"  Length : {len(tmp_arr)}"
+        )
+        qLOFF_arr_lists.append(tmp_arr)
 
     qLON_arr = np.array([fit_peak(q, curve, method=peakfit_method, output_dir=output_dir, run=run) for curve in rescaled_filt[laser_on_filt]])
+    print(f"Laser on event code {args.event_codes[0]} water peak statistics:\n"
+          f"  Mean   : {qLON_arr.mean():.5f}\n"
+          f"  Median : {np.median(qLON_arr):.5f}\n"
+          f"  Min    : {qLON_arr.min():.5f}\n"
+          f"  Max    : {qLON_arr.max():.5f}\n"
+          f"  Length : {len(qLON_arr)}"
+    )
 
 
     plt.figure(figsize=(12,6),dpi=200)
+    # ylims = [1.6, 2.0]
     ylims = [min(lin_x)-0.01, max(lin_x)+0.01]
     plt.subplot(1,2,1)
     plt.title("Water Peak ({}) vs Temperature Fit ({})".format(peakfit_method, fit_method))
@@ -563,9 +590,12 @@ def main():
     plt.ylim(ylims)
     plt.subplot(1,2,2)
     plt.title("Water Peak ({}) vs Laser Status".format(peakfit_method))
-    plt.violinplot([qLON_arr] + qLOFF_arr_lists, positions=[0] + [i+1 for i in range(len(qLOFF_arr_lists))], showextrema=False, showmeans=True, showmedians=True)
-    plt.xticks([0] + [i+1 for i in range(len(qLOFF_arr_lists))],["on"] + [f"off{i+1}" for i in range(len(qLOFF_arr_lists))])
-    plt.ylim(ylims)
+    q_arr_lists = [qLON_arr] + qLOFF_arr_lists
+    plt.violinplot(q_arr_lists, positions=[0] + [i+1 for i in range(len(qLOFF_arr_lists))], showextrema=False, showmeans=True, showmedians=True)
+    # plt.xticks([0] + [i+1 for i in range(len(qLOFF_arr_lists))],["on"] + [f"off{i+1}" for i in range(len(qLOFF_arr_lists))])
+    plt.xticks([0] + [i+1 for i in range(len(qLOFF_arr_lists))], args.event_codes)
+    # plt.ylim(ylims)
+    plt.ylim([min([min(q) for q in q_arr_lists])-0.01, max([max(q) for q in q_arr_lists])+0.01])
     plt.savefig("{}/run{:04d}_water-peak-vs-laser-status.png".format(output_dir,run), dpi=200)
 
     ids_ZofI_5sigma_mask = ids_q2_2sigma_mask[z_filt_for_rescaled]
@@ -573,15 +603,15 @@ def main():
 
     ### setup scans
     try:
-        lens_v_filt = lens_v[xray_on][beam_scale_factor_mask][junk_filt][water_filt][water_peak_filt][z_filt_for_rescaled]
+        lens_g_filt = lens_g[xray_on][beam_scale_factor_mask][junk_filt][water_filt][water_peak_filt][z_filt_for_rescaled]
         plt.figure(figsize=(6,6),dpi=200)
         for i, laser_off_filt_list in enumerate(laser_off_filt_lists):
-            plt.scatter(lens_v_filt[laser_off_filt_list],qWP_arr[laser_off_filt_list], label=f'Laser Off{i+1}',alpha=0.5)
-        plt.scatter(lens_v_filt[laser_on_filt]+0.02,qWP_arr[laser_on_filt], label='Laser On',alpha=0.5)
+            plt.scatter(lens_g_filt[laser_off_filt_list],qWP_arr[laser_off_filt_list], label=f'Laser Off{i+1}',alpha=0.5)
+        plt.scatter(lens_g_filt[laser_on_filt]+0.02,qWP_arr[laser_on_filt], label='Laser On',alpha=0.5)
         plt.legend()
         plt.xlabel('lens_h')
         plt.ylabel('water peak q1 (1/ang)')
-        plt.title('Run {} lens_v scan'.format(run))
+        plt.title('Run {} lens_g scan'.format(run))
         plt.savefig("{}/run{:04d}_lens-v-scan.png".format(output_dir,run), dpi=200)
     except:
         pass
