@@ -245,20 +245,21 @@ def plot_event_code_traces(data, event_codes, colors=None, plot_std=False, q=Non
     - difference_ref_idx: which event code to use as reference for difference plot (default: -1, last event code)
     - save_name: optional, if provided save instead of plt.show()
     """
-    print("Plotting 2-panel figure: left = averages of raw azav per event code,")
+    print("Plotting 2-panel figure: left = averages of normalized azav per event code,")
     print(f"right = difference of averages to reference event code {event_codes[difference_ref_idx]}")
 
     if colors is None:
         colors = cm.viridis(np.linspace(0, 1, len(event_codes)-1)) 
     if q is None: 
         q = np.arange(data[0].shape[1])
+    normalized_data = data[0] / data[0].sum(axis=1, keepdims=True)
 
     mean_traces = []
     std_traces = []
     for i, event_code in enumerate(event_codes):
         mask = data[1] == i
         print(f"event_code: {event_code} has {mask.sum()} events")
-        traces = data[0][mask]
+        traces = normalized_data[mask]
         mean_trace = traces.mean(axis=0)
         mean_traces.append(mean_trace)
         if plot_std:
@@ -274,14 +275,20 @@ def plot_event_code_traces(data, event_codes, colors=None, plot_std=False, q=Non
         if i == 0:
             color = 'red'
             lw = 5
+            alpha = 1
+            zorder = 10 # make sure it's on top
         else:
             color = colors[i-1]
             lw=1
+            alpha = 1
+            zorder = 1
         axs[0].plot(q,
             mean_traces[i],
             label=f'{event_code}',
             color=color,
-            linewidth=lw
+            linewidth=lw,
+            zorder=zorder,
+            alpha=alpha
         )
         if plot_std and std_traces[i] is not None:
             axs[0].fill_between(q,
@@ -300,15 +307,21 @@ def plot_event_code_traces(data, event_codes, colors=None, plot_std=False, q=Non
         if i == 0:
             color = 'red'
             lw = 5
+            alpha = 1
+            zorder = 10 # make sure it's on top
         else:
             color = colors[i-1]
             lw=1
+            alpha = 1
+            zorder = 1
         diff_trace = mean_traces[i] - ref_trace
         axs[1].plot(q,
             diff_trace,
             label=f'{event_code}',
             color=color,
-            linewidth=lw
+            linewidth=lw,
+            zorder=zorder,
+            alpha=alpha
         )
     axs[1].set_title(f"Difference to {event_codes[difference_ref_idx]}")
     axs[1].set_xlabel("q")
@@ -503,7 +516,7 @@ def main():
 
 
     ### remove Bragg peak contributions to azav
-    smooth_filt_scaled_azav = medfilt(filt_scaled_azav[:,:], 13)
+    smooth_filt_scaled_azav = medfilt(filt_scaled_azav[:,:], (1, 13))
 
     ### remove air-scatter to best approximation
     subtract = smooth_filt_scaled_azav.min(axis=0)
@@ -569,7 +582,14 @@ def main():
         ax4.plot(q[plot_mask], c[plot_mask])
     fig4.savefig("{}/run{:04d}_water-peak-2sigma_filter_pass.png".format(output_dir,run), dpi=200)
 
-
+    try:    
+        plot_event_code_traces(data=(test_doublefilt, azav_event_code_labels[beam_scale_factor_mask][junk_filt][water_filt][water_peak_filt]),
+                            q=q, difference_ref_idx=-2,
+                            event_codes=args.event_codes, 
+                            save_name="{}/run{:04d}_filtered_averages_by_event_codes.png".format(output_dir,run))
+    except:
+        print("error plotting filtered averages by event codes")
+        pass
     ids_q2_2sigma_mask = ids_waterq2q1ratio_mask[water_peak_filt]
     output['water-peak-2sigma_filter_pass'] = output['timestamp'].isin(ids_q2_2sigma_mask)
 
