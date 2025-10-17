@@ -200,7 +200,125 @@ def z_filt(array, z_cutoff):
             filt.append(True)
     return np.array(filt)
 
+# Added by Doris, 2025-10-17
+def load_h5_file(h5_file, event_codes):
+    """
+    Load a smalldata, depending on the psana version
+    """
+    f = File(h5_file)
+    xray_on = f['lightStatus']['xray'][:] == 1
 
+    azint_method = 'azav'
+    detname = 'jungfrau'
+
+    # Load azimuthal integration data
+    azav = f[detname][f'{azint_method}_azav'][xray_on]
+    if len(azav.shape) == 3:
+        azav = np.average(azav, axis=1) #2d azimuthal average, shape (num_events, num_q)
+    elif len(azav.shape) == 2:
+        pass
+    else:
+        raise ValueError(f"azav shape error: {azav.shape}")
+    q = f[detname][f'{azint_method}_q'][xray_on][0] # shape (num_q,)
+    
+    # Load event code labels
+    labels = []
+    for c in event_codes:
+        labels.append(
+            f['timing']['eventcodes'][:][xray_on][:, c] == 1
+        )
+    labels = np.column_stack(labels) # one-hot encoded, shape (num_events, num_event_codes)
+    return azav, labels, q
+
+# Added by Doris, 2025-10-17
+import matplotlib.cm as cm
+def plot_event_code_traces(data, event_codes, colors=None, plot_std=False, q=None, difference_ref_idx=-1, save_name=None):
+    """
+    Plots the mean and standard deviation traces for each event code in the data.
+    Left: averages of each event code.
+    Right: difference of averages vs a reference (default code -1, last event code).
+
+    Parameters:
+    - data: tuple (features, labels), where features is a 2D np.ndarray and labels is a 1D array.
+    - event_codes: list of event code integers.
+    - colors: color array suitable for plotting, with first non-red color for event code index 1.
+    - difference_ref_idx: which event code to use as reference for difference plot (default: -1, last event code)
+    - save_name: optional, if provided save instead of plt.show()
+    """
+    print("Plotting 2-panel figure: left = averages of raw azav per event code,")
+    print(f"right = difference of averages to reference event code {event_codes[difference_ref_idx]}")
+
+    if colors is None:
+        colors = cm.viridis(np.linspace(0, 1, len(event_codes)-1)) 
+    if q is None: 
+        q = np.arange(data[0].shape[1])
+
+    mean_traces = []
+    std_traces = []
+    for i, event_code in enumerate(event_codes):
+        mask = data[1] == i
+        print(f"event_code: {event_code} has {mask.sum()} events")
+        traces = data[0][mask]
+        mean_trace = traces.mean(axis=0)
+        mean_traces.append(mean_trace)
+        if plot_std:
+            std_trace = traces.std(axis=0)
+            std_traces.append(std_trace)
+        else:
+            std_traces.append(None)
+
+    fig, axs = plt.subplots(1, 2, figsize=(12, 6), sharex=True)
+
+    ## Left panel: just averages
+    for i, event_code in enumerate(event_codes):
+        if i == 0:
+            color = 'red'
+            lw = 5
+        else:
+            color = colors[i-1]
+            lw=1
+        axs[0].plot(q,
+            mean_traces[i],
+            label=f'{event_code}',
+            color=color,
+            linewidth=lw
+        )
+        if plot_std and std_traces[i] is not None:
+            axs[0].fill_between(q,
+                mean_traces[i] - std_traces[i],
+                mean_traces[i] + std_traces[i],
+                color=color,
+                alpha=0.1
+            )
+    axs[0].set_title("Average signals")
+    axs[0].set_xlabel("q")
+    axs[0].legend()
+
+    ## Right panel: difference to reference
+    ref_trace = mean_traces[difference_ref_idx]
+    for i, event_code in enumerate(event_codes):
+        if i == 0:
+            color = 'red'
+            lw = 5
+        else:
+            color = colors[i-1]
+            lw=1
+        diff_trace = mean_traces[i] - ref_trace
+        axs[1].plot(q,
+            diff_trace,
+            label=f'{event_code}',
+            color=color,
+            linewidth=lw
+        )
+    axs[1].set_title(f"Difference to {event_codes[difference_ref_idx]}")
+    axs[1].set_xlabel("q")
+    axs[1].legend()
+
+    plt.tight_layout()
+    if save_name is not None: 
+        plt.savefig(save_name, dpi=200)
+    else:
+        plt.show()
 
 
 ###------------------------------------------------------------------------------------------
@@ -320,6 +438,13 @@ def main():
     except:
         print('not a lens_h scan')
 
+    azav, event_code_labels, q = load_h5_file(h5_file=f, event_codes=args.event_codes)
+    azav_event_code_labels = np.argmax(event_code_labels, axis=1) # shape (num_events,)
+    plot_event_code_traces(data=(azav, azav_event_code_labels), q=q,
+                           difference_ref_idx=-2,
+                           event_codes=args.event_codes, 
+                           save_name="{}/run{:04d}_averages_by_event_codes.png".format(output_dir,run))
+
 
     ### scale using total intensity from beammon and then drop files that don't have appropriate falloff...shutter closed or noisy files etc
     beam_scale_factor = h5['MfxDg1BmMon']['totalIntensityJoules'][xray_on][:]
@@ -328,16 +453,6 @@ def main():
     beam_scale_factor_sigma = np.abs(zscore(beam_scale_factor))
     beam_scale_factor_mask[beam_scale_factor_sigma>2.0]=False
 
-    azav_all = h5['jungfrau']['azav_azav'][:]
-    if len(azav_all.shape) == 3:
-        print('2d azimuthal averaging')
-        azav_all = np.average(azav_all, axis=1)
-    elif len(azav_all.shape) == 2:
-        print('1d azimuthal averaging')
-    else:
-        print("azav shape error")
-
-    azav = azav_all[xray_on]
 
     scaled_azav = azav[beam_scale_factor_mask] / np.vstack(beam_scale_factor[beam_scale_factor_mask])
     #scaled_azav = scaled_azav_0[beam_scale_factor_mask]
@@ -530,13 +645,19 @@ def main():
     print("{} events rejected based on 5-sigma z filter\n".format(count_reject_z ))
 
 
-    ### initiate laser filters, sized to match filtered arrays
-    laser_on    = h5['timing']['eventcodes'][:][:, args.event_codes[0]][xray_on][beam_scale_factor_mask][:] == 1
+    # ### initiate laser filters, sized to match filtered arrays
+    # laser_on    = h5['timing']['eventcodes'][:][:, args.event_codes[0]][xray_on][beam_scale_factor_mask][:] == 1
+    # print(f"Getting laser on event code {args.event_codes[0]}...")
+    # laser_off_lists = []
+    # for event_code in args.event_codes[1:]:
+    #     print(f"Getting laser off event code {event_code}...")
+    #     laser_off_lists.append(h5['timing']['eventcodes'][:][:, event_code][xray_on][beam_scale_factor_mask][:] == 1)
+    laser_on = event_code_labels[:,0][beam_scale_factor_mask][:] == 1
     print(f"Getting laser on event code {args.event_codes[0]}...")
     laser_off_lists = []
-    for event_code in args.event_codes[1:]:
-        print(f"Getting laser off event code {event_code}...")
-        laser_off_lists.append(h5['timing']['eventcodes'][:][:, event_code][xray_on][beam_scale_factor_mask][:] == 1)
+    for event_code_idx in range(1, len(args.event_codes)):
+        print(f"Getting laser off event code {args.event_codes[event_code_idx]}...")
+        laser_off_lists.append(event_code_labels[:,event_code_idx][beam_scale_factor_mask][:] == 1)
 
     #plt.figure(figsize=(6,6),dpi=200)
     #for event_code in args.event_codes:
